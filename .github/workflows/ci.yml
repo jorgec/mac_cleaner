@@ -1,0 +1,273 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; no job needs more than read.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  # Explicit arm64 label (never `macos-latest`, which can change under us). Per GitHub docs
+  # `macos-15` is an arm64 (M1) runner. SPEC.md names macOS 14 as the minimum, but macos-14
+  # images were retired on 2026-11-02, so CI exercises macOS 15 (see docs/SPEC.md note).
+  # Keep this value identical in every job's `runs-on` below.
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: disallowed-methods ban must still fire (AC-001-16)
+        run: scripts/check-lint-sample.sh
+
+  test:
+    name: test
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-nextest
+      - name: Snapshot real HOME (INV-15)
+        run: scripts/ci-home-guard.sh snapshot "$RUNNER_TEMP/home.fingerprint"
+      - name: nextest (scratch HOME, test mode)
+        run: |
+          # INV-15: run with CLEANER_TEST_MODE=1 and a scratch HOME inside the system temp dir.
+          # CARGO_HOME/RUSTUP_HOME are pinned to the real locations so the toolchain keeps working.
+          export REAL_HOME="$HOME"
+          scratch="$(mktemp -d)"
+          HOME="$scratch" CARGO_HOME="$REAL_HOME/.cargo" RUSTUP_HOME="$REAL_HOME/.rustup" \
+            CLEANER_TEST_MODE=1 \
+            cargo nextest run --workspace --locked --no-tests=pass
+      - name: doctests
+        run: cargo test --workspace --doc --locked
+      - name: Verify real HOME untouched (INV-15)
+        run: scripts/ci-home-guard.sh verify "$RUNNER_TEMP/home.fingerprint"
+
+  # The safety regression suite (INV-*) as its own, never-skippable, visible required job.
+  # It runs every test whose name contains "safety". Convention: safety tests live in
+  # `tests/safety*.rs` / `mod safety` and carry "safety" in their path or name.
+  safety:
+    name: safety
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-nextest
+      - name: Snapshot real HOME (INV-15)
+        run: scripts/ci-home-guard.sh snapshot "$RUNNER_TEMP/home.fingerprint"
+      - name: nextest safety suite (scratch HOME, test mode)
+        run: |
+          export REAL_HOME="$HOME"
+          scratch="$(mktemp -d)"
+          # --no-tests=fail: a rename must never silently empty this gate.
+          HOME="$scratch" CARGO_HOME="$REAL_HOME/.cargo" RUSTUP_HOME="$REAL_HOME/.rustup" \
+            CLEANER_TEST_MODE=1 \
+            cargo nextest run --workspace --locked -E 'test(safety)' --no-tests=fail
+      - name: Verify real HOME untouched (INV-15)
+        run: scripts/ci-home-guard.sh verify "$RUNNER_TEMP/home.fingerprint"
+
+  deny:
+    name: deny
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-deny
+      - run: cargo deny check
+
+  audit:
+    name: audit
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-audit
+      - run: cargo audit
+
+  coverage:
+    name: coverage
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # Minimum line coverage (percent). 0 while the workspace has no code; raise it in the
+      # same PR as the first real tests (the testing policy prefers mutation score to a
+      # coverage number, so treat this as a floor, not a target).
+      COVERAGE_MIN_LINES: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
+      - name: Coverage (scratch HOME, test mode)
+        run: |
+          export REAL_HOME="$HOME"
+          scratch="$(mktemp -d)"
+          HOME="$scratch" CARGO_HOME="$REAL_HOME/.cargo" RUSTUP_HOME="$REAL_HOME/.rustup" \
+            CLEANER_TEST_MODE=1 \
+            cargo llvm-cov nextest --workspace --locked --no-tests=pass \
+              --fail-under-lines "$COVERAGE_MIN_LINES" --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lcov
+          path: lcov.info
+          if-no-files-found: warn
+
+  test-docs:
+    name: test-docs
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: shellcheck
+      - name: Test the checker itself
+        run: scripts/tests/check-test-docs.test.sh
+      - name: Enforce testing policy on the workspace
+        run: scripts/check-test-docs.sh
+      - name: shellcheck scripts
+        run: shellcheck scripts/*.sh scripts/tests/*.sh
+
+  workflows:
+    name: actionlint
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # actionlint is not in taiki-e/install-action; Homebrew's bottle is the simplest source.
+      - run: brew install actionlint
+      - run: actionlint
+
+  msrv:
+    name: msrv
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the minimum supported Rust (workspace rust-version)
+        run: |
+          msrv="$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          test -n "$msrv" || { echo "rust-version not found in Cargo.toml" >&2; exit 1; }
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup toolchain install "$msrv" --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build on MSRV
+        run: cargo "+$MSRV" check --workspace --all-targets --locked
+
+  docs:
+    name: docs
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo doc --workspace --no-deps --locked
+
+  # Informational (not a required check): mutation testing restricted to the PR diff when it
+  # touches cleaner-core, so redundant/ineffective tests surface per the frugality rule.
+  mutants-diff:
+    name: mutants (core, PR diff)
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-mutants,cargo-nextest
+      - name: Mutate changed code in cleaner-core
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff "origin/$BASE_REF...HEAD" -- crates/cleaner-core > pr.diff
+          if [ ! -s pr.diff ]; then
+            echo "No changes under crates/cleaner-core; skipping mutation run."
+            exit 0
+          fi
+          export REAL_HOME="$HOME"
+          scratch="$(mktemp -d)"
+          HOME="$scratch" CARGO_HOME="$REAL_HOME/.cargo" RUSTUP_HOME="$REAL_HOME/.rustup" \
+            CLEANER_TEST_MODE=1 \
+            cargo mutants --package cleaner-core --in-diff pr.diff --test-tool nextest
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants-out
+          path: mutants.out
+          if-no-files-found: ignore

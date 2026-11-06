@@ -1,0 +1,23 @@
+# Build output
+/target/
+/tests/lint/sample/target/
+**/*.rs.bk
+
+# Coverage / mutation artefacts
+*.profraw
+*.profdata
+/lcov.info
+/coverage/
+/mutants.out/
+/mutants.out.old/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local-only agent state
+.claude/settings.local.json
+
+# Cargo.lock IS committed (binary crate).

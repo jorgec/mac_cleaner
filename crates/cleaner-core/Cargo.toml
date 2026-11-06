@@ -1,0 +1,22 @@
+[package]
+name = "cleaner-core"
+description = "Pure domain logic and port traits (hexagonal core). No I/O, no env, no unsafe."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+
+[dev-dependencies]
+cleaner-testkit = { workspace = true }
+proptest = { workspace = true }

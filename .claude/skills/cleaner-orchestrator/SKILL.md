@@ -52,7 +52,15 @@ for the *same* slice are sequential (red before green).
    permissions, or scheduling.
 7. **Gate** (Definition of Done below). If any item fails, send it back with the specific
    failing item, not general feedback.
-8. **Record**: update `docs/ROADMAP.md` status and `CHANGELOG.md` (Keep a Changelog).
+8. **Record**: update `docs/ROADMAP.md` status, `CHANGELOG.md` (Keep a Changelog), and
+   **`docs/usage.md` after EVERY user-visible change** (new/changed command, flag, output, exit
+   code, env var, permission, rule, or safety behavior; also when something is removed or a
+   limitation lifts). `usage.md` documents only what is actually implemented and verified; planned
+   work stays under "Not yet available". Update the status banner (phase, implemented specs).
+   Ground it in the real binary: re-run `--help` and a fixture-HOME example and paste true output,
+   never from memory. Include `docs/usage.md` in every developer/tester delegation whose slice
+   changes behavior the user can see ("update usage.md" is part of that slice's done criteria),
+   and check it yourself at the gate.
 
 Slices are **vertical and small** (one rule or one capability, end to end, shippable).
 Prefer a walking skeleton first over layer-by-layer buildout.
@@ -123,6 +131,8 @@ A slice is done only if **all** are true; verify by running, never by assuming:
 - [ ] No test or script touched the real `$HOME`; INV-15 guard intact.
 - [ ] `cargo deny check` and `cargo audit` clean; new dependencies justified in the PR.
 - [ ] Docs, `--help` text, spec status, and CHANGELOG updated.
+- [ ] **`docs/usage.md` updated for every user-visible change** and verified against the real
+      binary (`--help`, an example run on a fixture HOME, exit codes). No documenting unimplemented features as available.
 - [ ] Reviewer pass done (see below), findings addressed or ticketed.
 
 ## Review stance

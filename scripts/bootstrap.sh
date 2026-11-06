@@ -122,6 +122,7 @@ EOF
 }
 
 # ---------------------------------------------------------------- cleanup / signals
+# shellcheck disable=SC2329  # invoked via trap
 cleanup() { [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ] && rm -rf "$TMP_DIR"; return 0; }
 trap cleanup EXIT
 trap 'say "Interrupted."; exit 130' INT TERM
@@ -426,7 +427,7 @@ install_component() {
 
 # ---------------------------------------------------------------- summary / exit
 finish() {
-  local line id tier deps desc st detail rc=0 shown_any=0
+  local id tier deps desc st detail rc=0 shown_any=0
   say ""
   say "Summary"
   say "-------"

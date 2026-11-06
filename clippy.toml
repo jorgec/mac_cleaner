@@ -1,0 +1,13 @@
+# "One door to mutation" (ADR 0001, AC-001-16, INV-01/INV-03).
+# These calls may only appear in the executor module and the cleaner-macos adapters, which
+# opt out locally with `#[allow(clippy::disallowed_methods)]` plus a comment naming the
+# reviewing invariant. Everywhere else they are a build error (CI runs clippy with -D warnings).
+disallowed-methods = [
+    { path = "std::fs::remove_file", reason = "mutation must go through the executor (INV-01, INV-03, INV-11)" },
+    { path = "std::fs::remove_dir", reason = "mutation must go through the executor (INV-01, INV-03, INV-11)" },
+    { path = "std::fs::remove_dir_all", reason = "recursive delete must go through the executor; never expand a rule at execute time (INV-03, INV-04)" },
+    { path = "std::fs::rename", reason = "moves must go through the executor/Trasher port (INV-04, INV-11)" },
+    { path = "std::fs::write", reason = "file writes must go through a port (audit sink / LogStore); core has no direct fs mutation" },
+    { path = "std::fs::copy", reason = "file copies must go through a port; core has no direct fs mutation" },
+    { path = "std::process::Command::new", reason = "spawning processes must go through the CommandRunner port (INV-10: never invoke sudo; INV-16: no network helpers)" },
+]

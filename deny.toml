@@ -1,0 +1,59 @@
+# cargo-deny configuration. Run: `cargo deny check`.
+[graph]
+targets = ["aarch64-apple-darwin"]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# Add RUSTSEC ids here ONLY with a dated justification comment.
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licences only. Adding one needs a conscious review.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace path dependencies carry no version; allowed because every member is publish = false.
+allow-wildcard-paths = true
+highlight = "all"
+# INV-16: the tool makes no network calls. No HTTP/TLS/socket-client stacks, direct or
+# transitive. Remove an entry only via ADR + explicit user approval.
+deny = [
+    { crate = "reqwest", reason = "INV-16: no network calls" },
+    { crate = "hyper", reason = "INV-16: no network calls" },
+    { crate = "hyper-util", reason = "INV-16: no network calls" },
+    { crate = "h2", reason = "INV-16: no network calls" },
+    { crate = "ureq", reason = "INV-16: no network calls" },
+    { crate = "curl", reason = "INV-16: no network calls" },
+    { crate = "curl-sys", reason = "INV-16: no network calls" },
+    { crate = "isahc", reason = "INV-16: no network calls" },
+    { crate = "surf", reason = "INV-16: no network calls" },
+    { crate = "attohttpc", reason = "INV-16: no network calls" },
+    { crate = "minreq", reason = "INV-16: no network calls" },
+    { crate = "tungstenite", reason = "INV-16: no network calls" },
+    { crate = "tonic", reason = "INV-16: no network calls" },
+    { crate = "native-tls", reason = "INV-16: no network calls (TLS stack implies a network client)" },
+    { crate = "openssl", reason = "INV-16: no network calls (TLS stack implies a network client)" },
+    { crate = "openssl-sys", reason = "INV-16: no network calls (TLS stack implies a network client)" },
+    { crate = "rustls", reason = "INV-16: no network calls (TLS stack implies a network client)" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

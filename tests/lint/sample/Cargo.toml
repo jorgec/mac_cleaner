@@ -1,0 +1,10 @@
+# Deliberately violating sample crate for AC-001-16. NOT a workspace member.
+# `scripts/check-lint-sample.sh` runs clippy on it with the repo-root clippy.toml and
+# requires that every banned call is reported. It must never compile cleanly under clippy.
+[package]
+name = "lint-sample"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]

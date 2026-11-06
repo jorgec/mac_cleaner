@@ -1,0 +1,72 @@
+# Virtual workspace root (ADR 0001): cli -> macos -> core; testkit is dev-dependency only.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# Deliberately failing lint sample (AC-001-16); it is its own workspace, built only by
+# scripts/check-lint-sample.sh.
+exclude = ["tests/lint/sample"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+# MSRV == the pinned toolchain (rust-toolchain.toml). The CI `msrv` job reads this value.
+rust-version = "1.99.1"
+# PLACEHOLDER: the project owner must confirm the licence before any release (also deny.toml).
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# Shared dependency versions go here; members use `dep = { workspace = true }`.
+# INV-16: no network crates (enforced by deny.toml [bans]).
+# Justifications for the spec-001 additions live in docs/specs/001-test-matrix.md.
+cleaner-core = { path = "crates/cleaner-core" }
+cleaner-macos = { path = "crates/cleaner-macos" }
+cleaner-testkit = { path = "crates/cleaner-testkit" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+base64 = "0.23.1"
+thiserror = "2.0.21"
+# NFC folding for APFS-aliased deny matching (AC-001-17); pure Rust, MIT OR Apache-2.0.
+unicode-normalization = "0.1.26"
+# Spec 002b (justifications in docs/specs/002b-test-matrix.md section 5):
+# CLI parsing (derive), no default features beyond what the derive CLI needs.
+clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+# Production RunIds (26-char Crockford, monotonic generator).
+ulid = { version = "3.0.0", default-features = false, features = ["std"] }
+# SIGINT -> CancelToken (safe iterator API, no `unsafe` in the CLI crate).
+signal-hook = "0.4.6"
+# ADR 0002: Foundation volume resource values (cleaner-macos only).
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSURL", "NSString", "NSArray", "NSDictionary", "NSError", "NSValue"] }
+objc2 = "0.6.5"
+# dev / test only:
+tempfile = "3.27.0"
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+proptest = "1.12.0"
+
+[workspace.lints.rust]
+# `deny` workspace-wide; cleaner-core additionally has `#![forbid(unsafe_code)]`, and only
+# cleaner-macos may `#[allow(unsafe_code)]` (ADR 0001), each block with `// SAFETY:` + a test.
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+# Pedantic lints that cost more noise than they buy for this codebase:
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+opt-level = 3
+debug = false
+# Keep panic = "unwind": the executor must still be able to write a run_end audit record on
+# panic. Changing this requires an ADR.
